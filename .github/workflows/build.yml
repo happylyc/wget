@@ -1,4 +1,4 @@
-name: Build Static Wget
+name: Build Static Wget for aarch64_cortex-a53
 
 on:
   push:
@@ -15,25 +15,26 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v2
 
-    - name: Install dependencies
+    - name: Set up cross-compilation environment for aarch64
       run: |
         sudo apt update
-        sudo apt install -y build-essential libssl-dev
+        sudo apt install -y build-essential libssl-dev gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
-    - name: Download and build wget
+    - name: Download and build wget for aarch64
       run: |
         git clone https://git.savannah.gnu.org/git/wget.git
         cd wget
         ./bootstrap
-        ./configure --with-ssl=openssl --disable-ntlm
+        ./configure --host=aarch64-linux-gnu --with-ssl=openssl --disable-ntlm
         make
-        make install
+        make install DESTDIR=/tmp/aarch64-wget
 
     - name: Zip the wget binary
       run: |
-        zip -r /tmp/wget-static.zip /usr/local/bin/wget
+        cd /tmp
+        zip -r /tmp/wget-aarch64-static.zip aarch64-wget/usr/local/bin/wget
 
     - name: Upload to GitHub Release
       uses: softprops/action-gh-release@v1
       with:
-        files: /tmp/wget-static.zip
+        files: /tmp/wget-aarch64-static.zip
