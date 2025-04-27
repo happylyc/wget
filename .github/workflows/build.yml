@@ -1,0 +1,39 @@
+name: Build Static Wget
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Install dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y build-essential libssl-dev
+
+    - name: Download and build wget
+      run: |
+        git clone https://git.savannah.gnu.org/git/wget.git
+        cd wget
+        ./bootstrap
+        ./configure --with-ssl=openssl --disable-ntlm
+        make
+        make install
+
+    - name: Zip the wget binary
+      run: |
+        zip -r /tmp/wget-static.zip /usr/local/bin/wget
+
+    - name: Upload to GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: /tmp/wget-static.zip
