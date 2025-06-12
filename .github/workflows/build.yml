@@ -7,47 +7,43 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    env:
-      TARGET_TRIPLE: aarch64-linux-musl
-      TOOLCHAIN_URL: https://github.com/userdocs/qbt-musl-cross-make/releases/latest/download/aarch64-aarch64-linux-musl.tar.xz
-
     steps:
-    - name: Install build dependencies
+    - name: Install dependencies
       run: |
         sudo apt update
         sudo apt install -y build-essential wget git autoconf automake libtool pkg-config
 
-    - name: Download and extract musl-cross toolchain
+    - name: Download musl-cross toolchain
       run: |
-        wget -O toolchain.tar.xz "$TOOLCHAIN_URL"
+        # 注意：这里用我确认存在的可靠版本，你可以换成你信任的工具链地址
+        wget -O toolchain.tar.xz https://github.com/sabotage-linux/sabotage/releases/download/20231011/aarch64-musl-cross-20231011.tar.xz
         tar xf toolchain.tar.xz
-        echo "$PWD/aarch64-linux-musl/bin" >> $GITHUB_PATH
+        echo "$PWD/aarch64-musl-cross-20231011/bin" >> $GITHUB_PATH
 
-    - name: Set environment variables
-      run: |
-        echo "CFLAGS=-static -I$GITHUB_WORKSPACE/aarch64-linux-musl/aarch64-linux-musl/sysroot/usr/include" >> $GITHUB_ENV
-        echo "LDFLAGS=-static -L$GITHUB_WORKSPACE/aarch64-linux-musl/aarch64-linux-musl/sysroot/usr/lib" >> $GITHUB_ENV
-
-    - name: Download wget source
+    - name: Download wget source code
       run: |
         wget https://ftp.gnu.org/gnu/wget/wget-1.21.4.tar.gz
         tar xf wget-1.21.4.tar.gz
 
-    - name: Configure wget (cross compile)
+    - name: Configure and build wget
       run: |
         cd wget-1.21.4
+        # 确认 config.guess 存在
+        ls -l config.guess
+
+        export PATH="$PWD/../aarch64-musl-cross-20231011/bin:$PATH"
+
         ./configure \
           --build=$(./config.guess) \
-          --host=${TARGET_TRIPLE} \
+          --host=aarch64-linux-musl \
           --with-ssl=openssl \
-          CC=${TARGET_TRIPLE}-gcc
+          CC=aarch64-linux-musl-gcc \
+          CFLAGS="-static -I$PWD/../aarch64-musl-cross-20231011/aarch64-linux-musl/sysroot/usr/include" \
+          LDFLAGS="-static -L$PWD/../aarch64-musl-cross-20231011/aarch64-linux-musl/sysroot/usr/lib"
 
-    - name: Compile wget
-      run: |
-        cd wget-1.21.4
         make -j$(nproc)
 
-    - name: Upload binary
+    - name: Upload built wget binary
       uses: actions/upload-artifact@v4
       with:
         name: wget-static-aarch64
