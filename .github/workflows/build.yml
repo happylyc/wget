@@ -1,4 +1,4 @@
-name: Static wget for OpenWrt (aarch64_cortex-a53_neon-vfpv4)
+name: Build static wget (aarch64-musl)
 
 on:
   workflow_dispatch:
@@ -6,31 +6,40 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      TARGET_TRIPLE: aarch64-linux-musl
+      TOOLCHAIN_URL: https://github.com/userdocs/qbt-musl-cross-make/releases/latest/download/aarch64-linux-musl.tar.xz
 
     steps:
-    - name: Install dependencies
+    - name: Download musl-cross toolchain
+      run: |
+        wget -O toolchain.tar.xz "$TOOLCHAIN_URL"
+        tar xf toolchain.tar.xz -C .
+        export PATH="$PWD/aarch64-linux-musl/bin:$PATH"
+
+    - name: Install build dependencies
       run: |
         sudo apt update
-        sudo apt install -y build-essential autoconf automake libtool \
-            pkg-config libssl-dev zlib1g-dev wget git gcc-aarch64-linux-gnu \
-            autopoint gperf autoconf-archive
+        sudo apt install -y build-essential wget git autoconf automake libtool pkg-config
 
-    - name: Clone wget
+    - name: Clone wget source
       run: |
         git clone https://git.savannah.gnu.org/git/wget.git
         cd wget
         git checkout v1.21.4
 
-    - name: Build static wget for aarch64
+    - name: Build static wget
       run: |
         cd wget
         ./bootstrap
-        ./configure --host=aarch64-linux-gnu --with-ssl=openssl \
+        CC=${TARGET_TRIPLE}-gcc ./configure \
+          --host=${TARGET_TRIPLE} \
+          --with-ssl=openssl \
           --disable-shared --enable-static LDFLAGS="-static"
         make -j$(nproc)
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: static-wget-aarch64
+        name: wget-static-aarch64
         path: wget/src/wget
