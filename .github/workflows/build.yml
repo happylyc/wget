@@ -1,4 +1,4 @@
-name: Build static wget (aarch64-musl)
+name: Build Static Wget for OpenWrt (aarch64)
 
 on:
   workflow_dispatch:
@@ -15,7 +15,7 @@ jobs:
       run: |
         wget -O toolchain.tar.xz "$TOOLCHAIN_URL"
         tar xf toolchain.tar.xz
-        export PATH="$PWD/aarch64-linux-musl/bin:$PATH"
+        echo "$PWD/aarch64-linux-musl/bin" >> $GITHUB_PATH
 
     - name: Install build tools
       run: |
@@ -23,24 +23,23 @@ jobs:
         sudo apt install -y build-essential wget git autoconf automake \
           libtool pkg-config
 
-    - name: Clone wget
+    - name: Download wget source
       run: |
-        git clone https://git.savannah.gnu.org/git/wget.git
-        cd wget
-        git checkout v1.21.4
+        wget https://ftp.gnu.org/gnu/wget/wget-1.21.4.tar.gz
+        tar xf wget-1.21.4.tar.gz
 
-    - name: Compile static wget
+    - name: Compile wget statically
       run: |
-        cd wget
-        ./bootstrap
-        CC=${TARGET_TRIPLE}-gcc ./configure \
+        cd wget-1.21.4
+        ./configure \
           --host=${TARGET_TRIPLE} \
           --with-ssl=openssl \
-          --disable-shared --enable-static LDFLAGS="-static"
+          --disable-shared --enable-static \
+          CC=${TARGET_TRIPLE}-gcc LDFLAGS="-static"
         make -j$(nproc)
 
     - name: Upload wget binary
       uses: actions/upload-artifact@v4
       with:
         name: wget-static-aarch64
-        path: wget/src/wget
+        path: wget-1.21.4/src/wget
