@@ -7,43 +7,45 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    env:
+      TARGET_TRIPLE: aarch64-linux-musl
+      TOOLCHAIN_URL: https://github.com/userdocs/qbt-musl-cross-make/releases/latest/download/aarch64-aarch64-linux-musl.tar.xz
+
     steps:
     - name: Install dependencies
       run: |
         sudo apt update
-        sudo apt install -y build-essential wget git autoconf automake libtool pkg-config
+        sudo apt install -y build-essential wget git pkg-config
 
-    - name: Download musl-cross toolchain
+    - name: Download & extract musl-cross toolchain
       run: |
-        # 注意：这里用我确认存在的可靠版本，你可以换成你信任的工具链地址
-        wget -O toolchain.tar.xz https://github.com/sabotage-linux/sabotage/releases/download/20231011/aarch64-musl-cross-20231011.tar.xz
+        wget -O toolchain.tar.xz "$TOOLCHAIN_URL"
         tar xf toolchain.tar.xz
-        echo "$PWD/aarch64-musl-cross-20231011/bin" >> $GITHUB_PATH
+        echo "$PWD/aarch64-linux-musl/bin" >> $GITHUB_PATH
 
-    - name: Download wget source code
+    - name: Download wget source
       run: |
         wget https://ftp.gnu.org/gnu/wget/wget-1.21.4.tar.gz
         tar xf wget-1.21.4.tar.gz
 
-    - name: Configure and build wget
+    - name: Configure & build wget
       run: |
         cd wget-1.21.4
-        # 确认 config.guess 存在
-        ls -l config.guess
-
-        export PATH="$PWD/../aarch64-musl-cross-20231011/bin:$PATH"
-
+        # ensure config.guess is here
+        ls config.guess
+        # set cross-compiler path
+        export PATH="$PWD/../aarch64-linux-musl/bin:$PATH"
+        # build static with OpenSSL
         ./configure \
           --build=$(./config.guess) \
-          --host=aarch64-linux-musl \
+          --host=${TARGET_TRIPLE} \
           --with-ssl=openssl \
-          CC=aarch64-linux-musl-gcc \
-          CFLAGS="-static -I$PWD/../aarch64-musl-cross-20231011/aarch64-linux-musl/sysroot/usr/include" \
-          LDFLAGS="-static -L$PWD/../aarch64-musl-cross-20231011/aarch64-linux-musl/sysroot/usr/lib"
-
+          CC=${TARGET_TRIPLE}-gcc \
+          CFLAGS="-static -I$PWD/../aarch64-linux-musl/sysroot/usr/include" \
+          LDFLAGS="-static -L$PWD/../aarch64-linux-musl/sysroot/usr/lib"
         make -j$(nproc)
 
-    - name: Upload built wget binary
+    - name: Upload static wget
       uses: actions/upload-artifact@v4
       with:
         name: wget-static-aarch64
