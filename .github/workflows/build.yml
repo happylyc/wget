@@ -12,7 +12,8 @@ jobs:
       run: |
         sudo apt update
         sudo apt install -y build-essential autoconf automake libtool \
-            pkg-config libssl-dev zlib1g-dev wget git gcc-aarch64-linux-gnu
+            pkg-config libssl-dev zlib1g-dev wget git gcc-aarch64-linux-gnu \
+            autopoint gperf
 
     - name: Clone wget
       run: |
