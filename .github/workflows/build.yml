@@ -8,27 +8,28 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TARGET_TRIPLE: aarch64-linux-musl
-      TOOLCHAIN_URL: https://github.com/userdocs/qbt-musl-cross-make/releases/latest/download/aarch64-linux-musl.tar.xz
+      TOOLCHAIN_URL: https://github.com/userdocs/qbt-musl-cross-make/releases/latest/download/aarch64-aarch64-linux-musl.tar.xz
 
     steps:
     - name: Download musl-cross toolchain
       run: |
         wget -O toolchain.tar.xz "$TOOLCHAIN_URL"
-        tar xf toolchain.tar.xz -C .
+        tar xf toolchain.tar.xz
         export PATH="$PWD/aarch64-linux-musl/bin:$PATH"
 
-    - name: Install build dependencies
+    - name: Install build tools
       run: |
         sudo apt update
-        sudo apt install -y build-essential wget git autoconf automake libtool pkg-config
+        sudo apt install -y build-essential wget git autoconf automake \
+          libtool pkg-config
 
-    - name: Clone wget source
+    - name: Clone wget
       run: |
         git clone https://git.savannah.gnu.org/git/wget.git
         cd wget
         git checkout v1.21.4
 
-    - name: Build static wget
+    - name: Compile static wget
       run: |
         cd wget
         ./bootstrap
@@ -38,7 +39,7 @@ jobs:
           --disable-shared --enable-static LDFLAGS="-static"
         make -j$(nproc)
 
-    - name: Upload artifact
+    - name: Upload wget binary
       uses: actions/upload-artifact@v4
       with:
         name: wget-static-aarch64
