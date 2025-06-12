@@ -1,4 +1,4 @@
-name: Build Static Wget for OpenWrt (aarch64)
+name: Build Static Wget (aarch64-musl)
 
 on:
   workflow_dispatch:
@@ -6,39 +6,48 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     env:
       TARGET_TRIPLE: aarch64-linux-musl
       TOOLCHAIN_URL: https://github.com/userdocs/qbt-musl-cross-make/releases/latest/download/aarch64-aarch64-linux-musl.tar.xz
 
     steps:
-    - name: Download musl-cross toolchain
+    - name: Install build dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y build-essential wget git autoconf automake libtool pkg-config
+
+    - name: Download and extract musl-cross toolchain
       run: |
         wget -O toolchain.tar.xz "$TOOLCHAIN_URL"
         tar xf toolchain.tar.xz
         echo "$PWD/aarch64-linux-musl/bin" >> $GITHUB_PATH
 
-    - name: Install build tools
+    - name: Set environment variables
       run: |
-        sudo apt update
-        sudo apt install -y build-essential wget git autoconf automake \
-          libtool pkg-config
+        echo "CFLAGS=-static -I$GITHUB_WORKSPACE/aarch64-linux-musl/aarch64-linux-musl/sysroot/usr/include" >> $GITHUB_ENV
+        echo "LDFLAGS=-static -L$GITHUB_WORKSPACE/aarch64-linux-musl/aarch64-linux-musl/sysroot/usr/lib" >> $GITHUB_ENV
 
     - name: Download wget source
       run: |
         wget https://ftp.gnu.org/gnu/wget/wget-1.21.4.tar.gz
         tar xf wget-1.21.4.tar.gz
 
-    - name: Compile wget statically
+    - name: Configure wget (cross compile)
       run: |
         cd wget-1.21.4
         ./configure \
+          --build=$(./config.guess) \
           --host=${TARGET_TRIPLE} \
           --with-ssl=openssl \
-          --disable-shared --enable-static \
-          CC=${TARGET_TRIPLE}-gcc LDFLAGS="-static"
+          CC=${TARGET_TRIPLE}-gcc
+
+    - name: Compile wget
+      run: |
+        cd wget-1.21.4
         make -j$(nproc)
 
-    - name: Upload wget binary
+    - name: Upload binary
       uses: actions/upload-artifact@v4
       with:
         name: wget-static-aarch64
