@@ -18,7 +18,7 @@ jobs:
       run: |
         git clone https://git.savannah.gnu.org/git/wget.git
         cd wget
-        git checkout release-1.21.4
+        git checkout v1.21.4
 
     - name: Build static wget for aarch64
       run: |
