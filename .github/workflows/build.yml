@@ -1,40 +1,35 @@
-name: Build Static Wget for aarch64_cortex-a53
+name: Static wget for OpenWrt (aarch64_cortex-a53_neon-vfpv4)
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v2
 
-    - name: Set up cross-compilation environment for aarch64
+    steps:
+    - name: Install dependencies
       run: |
         sudo apt update
-        sudo apt install -y build-essential libssl-dev gcc-aarch64-linux-gnu g++-aarch64-linux-gnu gettext gperf autoconf automake libtool
+        sudo apt install -y build-essential autoconf automake libtool \
+            pkg-config libssl-dev zlib1g-dev wget git gcc-aarch64-linux-gnu
 
-    - name: Download and build wget for aarch64
+    - name: Clone wget
       run: |
         git clone https://git.savannah.gnu.org/git/wget.git
         cd wget
-        ./bootstrap
-        ./configure --host=aarch64-linux-gnu --with-ssl=openssl --disable-ntlm
-        make
-        make install DESTDIR=/tmp/aarch64-wget
+        git checkout release-1.21.4
 
-    - name: Zip the wget binary
+    - name: Build static wget for aarch64
       run: |
-        cd /tmp
-        zip -r /tmp/wget-aarch64-static.zip aarch64-wget/usr/local/bin/wget
+        cd wget
+        ./bootstrap
+        ./configure --host=aarch64-linux-gnu --with-ssl=openssl \
+          --disable-shared --enable-static LDFLAGS="-static"
+        make -j$(nproc)
 
-    - name: Upload to GitHub Release
-      uses: softprops/action-gh-release@v1
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
       with:
-        files: /tmp/wget-aarch64-static.zip
+        name: static-wget-aarch64
+        path: wget/src/wget
