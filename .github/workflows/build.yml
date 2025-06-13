@@ -1,4 +1,3 @@
-
 name: Build Static wget
 on: [push, workflow_dispatch]
 
@@ -12,15 +11,23 @@ jobs:
       - name: Setup OpenWrt SDK
         run: |
           SDK_URL="https://mirror-03.infra.openwrt.org/releases/23.05.4/targets/mediatek/mt7622/openwrt-sdk-23.05.4-mediatek-mt7622_gcc-12.3.0_musl.Linux-x86_64.tar.xz"
-          wget -q $SDK_URL -O openwrt-sdk.tar.xz
-          tar xf openwrt-sdk.tar.xz
-          mv openwrt-sdk-* sdk
-          echo "SDK_PATH=$(pwd)/sdk" >> $GITHUB_ENV
+          wget -q $SDK_URL -O sdk.tar.xz
+          tar xf sdk.tar.xz
+          # 动态获取解压后的目录名
+          SDK_DIR=$(ls -d */ | head -n 1)
+          # 将解压后的目录重命名为 sdk（如果必要）
+          # 如果解压后的目录名已经是 sdk，则这行可以省略
+          # mv $SDK_DIR sdk
+          echo "SDK_PATH=$(pwd)/$SDK_DIR" >> $GITHUB_ENV
+          # 验证 defaults.mk 文件是否存在
+          if [ ! -f "$SDK_DIR/include/defaults.mk" ]; then
+            echo "Error: defaults.mk not found in $SDK_DIR/include/"
+            exit 1
+          fi
 
       - name: Patch SDK
         run: |
           cd ${{ env.SDK_PATH }}
-          [ -f include/defaults.mk ] || (echo "Error: defaults.mk missing" && exit 1)
           sed -i 's/--disable-static/--enable-static/g' include/defaults.mk
           echo "CONFIG_PACKAGE_wget=y" >> .config
           echo "CONFIG_WGET_SSL=y" >> .config
@@ -30,10 +37,10 @@ jobs:
           cd ${{ env.SDK_PATH }}
           make defconfig
           make package/wget/compile -j$(nproc) V=s
-          find bin -name "wget" -type f -exec cp {} ./ \;
+          cp $(find bin -name "wget" -type f) .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: wget-static
-          path: ${{ env.SDK_PATH }}/wget
+          path: ${{ env.SDK_PATH }}/wget  # 注意：这里可能需要根据实际编译结果调整路径
