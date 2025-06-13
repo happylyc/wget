@@ -1,36 +1,41 @@
-name: Build Static wget for aarch64
-on: [push] # 触发条件
+
+: Build Static wget
+on: [push, workflow_dispatch]
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup OpenWrt SDK
         run: |
           SDK_URL="https://mirror-03.infra.openwrt.org/releases/23.05.4/targets/mediatek/mt7622/openwrt-sdk-23.05.4-mediatek-mt7622_gcc-12.3.0_musl.Linux-x86_64.tar.xz"
-          wget $SDK_URL
-          tar xf openwrt-sdk-*.tar.xz
-          cd openwrt-sdk-*
-          echo SDK_PATH=$PWD >> $GITHUB_ENV
+          wget -q $SDK_URL -O sdk.tar.xz
+          tar xf sdk.tar.xz
+          SDK_DIR=$(tar tf sdk.tar.xz | head -1 | cut -f1 -d"/")
+          mv $SDK_DIR sdk
+          echo "SDK_PATH=$(pwd)/sdk" >> $GITHUB_ENV
+          ls -l ${{ env.SDK_PATH }}/include/  # 验证目录结构
 
-      - name: Build wget
+      - name: Patch SDK
         run: |
           cd ${{ env.SDK_PATH }}
-          # 启用静态编译选项
-          cp -f include/defaults.mk include/defaults.mk.bak
+          [ -f include/defaults.mk ] || (echo "Error: defaults.mk missing" && exit 1)
           sed -i 's/--disable-static/--enable-static/g' include/defaults.mk
-          
-          # 编译 wget（含 SSL 支持）
-          make package/network/utils/wget/compile V=sc
-          
-          # 提取编译产物
-          find bin -name "wget" -exec cp {} $PWD \;
-          
+          echo "CONFIG_PACKAGE_wget=y" >> .config
+          echo "CONFIG_WGET_SSL=y" >> .config
+
+      - name: Compile wget
+        run: |
+          cd ${{ env.SDK_PATH }}
+          make defconfig
+          make package/wget/compile -j$(nproc) V=s
+          find bin -name "wget" -type f -exec cp {} ./ \;
+
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: wget-static-aarch64
+          name: wget-static
           path: ${{ env.SDK_PATH }}/wget
