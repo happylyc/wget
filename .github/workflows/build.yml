@@ -12,12 +12,10 @@ jobs:
       - name: Setup OpenWrt SDK
         run: |
           SDK_URL="https://mirror-03.infra.openwrt.org/releases/23.05.4/targets/mediatek/mt7622/openwrt-sdk-23.05.4-mediatek-mt7622_gcc-12.3.0_musl.Linux-x86_64.tar.xz"
-          wget -q $SDK_URL -O sdk.tar.xz
-          tar xf sdk.tar.xz
-          SDK_DIR=$(tar tf sdk.tar.xz | head -1 | cut -f1 -d"/")
-          mv $SDK_DIR sdk
+          wget -q $SDK_URL -O openwrt-sdk.tar.xz
+          tar xf openwrt-sdk.tar.xz
+          mv openwrt-sdk-* sdk
           echo "SDK_PATH=$(pwd)/sdk" >> $GITHUB_ENV
-          ls -l ${{ env.SDK_PATH }}/include/  # 验证目录结构
 
       - name: Patch SDK
         run: |
