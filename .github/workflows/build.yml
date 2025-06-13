@@ -1,5 +1,5 @@
 
-: Build Static wget
+name: Build Static wget
 on: [push, workflow_dispatch]
 
 jobs:
