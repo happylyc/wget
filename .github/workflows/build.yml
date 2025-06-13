@@ -1,52 +1,36 @@
-name: Build Static Wget (aarch64-musl)
-
-on:
-  workflow_dispatch:
+name: Build Static wget for aarch64
+on: [push] # 触发条件
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
-    env:
-      TARGET_TRIPLE: aarch64-linux-musl
-      TOOLCHAIN_URL: https://github.com/userdocs/qbt-musl-cross-make/releases/latest/download/aarch64-aarch64-linux-musl.tar.xz
-
     steps:
-    - name: Install dependencies
-      run: |
-        sudo apt update
-        sudo apt install -y build-essential wget git pkg-config
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Download & extract musl-cross toolchain
-      run: |
-        wget -O toolchain.tar.xz "$TOOLCHAIN_URL"
-        tar xf toolchain.tar.xz
-        echo "$PWD/aarch64-linux-musl/bin" >> $GITHUB_PATH
+      - name: Setup OpenWrt SDK
+        run: |
+          SDK_URL="https://mirror-03.infra.openwrt.org/releases/23.05.4/targets/mediatek/mt7622/openwrt-sdk-23.05.4-mediatek-mt7622_gcc-12.3.0_musl.Linux-x86_64.tar.xz"
+          wget $SDK_URL
+          tar xf openwrt-sdk-*.tar.xz
+          cd openwrt-sdk-*
+          echo SDK_PATH=$PWD >> $GITHUB_ENV
 
-    - name: Download wget source
-      run: |
-        wget https://ftp.gnu.org/gnu/wget/wget-1.21.4.tar.gz
-        tar xf wget-1.21.4.tar.gz
-
-    - name: Configure & build wget
-      run: |
-        cd wget-1.21.4
-        # ensure config.guess is here
-        ls config.guess
-        # set cross-compiler path
-        export PATH="$PWD/../aarch64-linux-musl/bin:$PATH"
-        # build static with OpenSSL
-        ./configure \
-          --build=$(./config.guess) \
-          --host=${TARGET_TRIPLE} \
-          --with-ssl=openssl \
-          CC=${TARGET_TRIPLE}-gcc \
-          CFLAGS="-static -I$PWD/../aarch64-linux-musl/sysroot/usr/include" \
-          LDFLAGS="-static -L$PWD/../aarch64-linux-musl/sysroot/usr/lib"
-        make -j$(nproc)
-
-    - name: Upload static wget
-      uses: actions/upload-artifact@v4
-      with:
-        name: wget-static-aarch64
-        path: wget-1.21.4/src/wget
+      - name: Build wget
+        run: |
+          cd ${{ env.SDK_PATH }}
+          # 启用静态编译选项
+          cp -f include/defaults.mk include/defaults.mk.bak
+          sed -i 's/--disable-static/--enable-static/g' include/defaults.mk
+          
+          # 编译 wget（含 SSL 支持）
+          make package/network/utils/wget/compile V=sc
+          
+          # 提取编译产物
+          find bin -name "wget" -exec cp {} $PWD \;
+          
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: wget-static-aarch64
+          path: ${{ env.SDK_PATH }}/wget
