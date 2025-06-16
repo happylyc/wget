@@ -123,9 +123,4 @@ EOF
         name: wget-static-ipk-${{ matrix.arch }}
         path: ${{ steps.create_ipk.outputs.ipk_path }}
 
-    - name: Verify IPK on router (手动执行步骤提示)
-      run: |
-        echo "✅ IPK 文件已生成，请手动上传至路由器并安装："
-        echo "scp ${{ steps.create_ipk.outputs.ipk_path }} root@192.168.1.1:/tmp/"
-        echo "ssh root@192.168.1.1 'opkg install /tmp/${{ steps.create_ipk.outputs.ipk_path }}'"
-        echo "测试命令：wget-static http://example.com -O /tmp/test.txt"
+   
