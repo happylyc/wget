@@ -1,46 +1,131 @@
-name: Build Static wget
-on: [push, workflow_dispatch]
+name: Build Wget Static IPK for OpenWrt 18.06-SNAPSHOT
+
+on:
+  push:
+    branches: [ main ]
+  release:
+    types: [ published ]
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        arch: [ aarch64_cortex-a53 ]
+    
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-      - name: Setup OpenWrt SDK
-        run: |
-          SDK_URL="https://mirror-03.infra.openwrt.org/releases/23.05.4/targets/mediatek/mt7622/openwrt-sdk-23.05.4-mediatek-mt7622_gcc-12.3.0_musl.Linux-x86_64.tar.xz"
-          wget -q $SDK_URL -O sdk.tar.xz
-          tar xf sdk.tar.xz
-          # 动态获取解压后的目录名
-          SDK_DIR=$(ls -d */ | head -n 1)
-          # 将解压后的目录重命名为 sdk（如果必要）
-          # 如果解压后的目录名已经是 sdk，则这行可以省略
-          # mv $SDK_DIR sdk
-          echo "SDK_PATH=$(pwd)/$SDK_DIR" >> $GITHUB_ENV
-          # 验证 defaults.mk 文件是否存在
-          if [ ! -f "$SDK_DIR/include/defaults.mk" ]; then
-            echo "Error: defaults.mk not found in $SDK_DIR/include/"
-            exit 1
-          fi
+    - name: Install build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          libssl-dev \
+          libncurses5-dev \
+          pkg-config \
+          autoconf \
+          automake \
+          libtool \
+          wget \
+          tar \
+          xz-utils
 
-      - name: Patch SDK
-        run: |
-          cd ${{ env.SDK_PATH }}
-          sed -i 's/--disable-static/--enable-static/g' include/defaults.mk
-          echo "CONFIG_PACKAGE_wget=y" >> .config
-          echo "CONFIG_WGET_SSL=y" >> .config
+    - name: Download OpenWrt 18.06.5 SDK (for mediatek/mt7622)
+      run: |
+        SDK_URL="https://archive.openwrt.org/releases/18.06.5/targets/mediatek/mt7622/openwrt-sdk-18.06.5-mediatek-mt7622_gcc-7.3.0_musl.Linux-x86_64.tar.xz"
+        mkdir -p toolchains
+        wget -O toolchains/openwrt-sdk.tar.xz "$SDK_URL"
+        tar -xf toolchains/openwrt-sdk.tar.xz -C toolchains --strip-components=1
 
-      - name: Compile wget
-        run: |
-          cd ${{ env.SDK_PATH }}
-          make defconfig
-          make package/wget/compile -j$(nproc) V=s
-          cp $(find bin -name "wget" -type f) .
+    - name: Download wget source
+      run: |
+        wget https://mirror.team-cymru.com/gnu/wget/wget-1.21.1.tar.gz
+        tar -zxvf wget-1.21.tar.gz
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: wget-static
-          path: ${{ env.SDK_PATH }}/wget  # 注意：这里可能需要根据实际编译结果调整路径
+    - name: Configure & build static wget
+      env:
+        SDK_PATH: ${{ github.workspace }}/toolchains/staging_dir/toolchain-aarch64_cortex-a53_gcc-7.3.0_musl
+        CROSS_COMPILE: aarch64-openwrt-linux-
+        ARCH: aarch64_cortex-a53
+      run: |
+        cd wget-1.21
+        export PATH="$SDK_PATH/bin:$PATH"
+        ./configure \
+          --host=aarch64-openwrt-linux \
+          --build=x86_64-linux-gnu \
+          --prefix=/usr \
+          --sysconfdir=/etc \
+          --mandir=/usr/share/man \
+          --infodir=/usr/share/info \
+          --localstatedir=/var \
+          --disable-nls \
+          --disable-ipv6 \
+          --enable-static=yes \
+          --enable-shared=no \
+          --with-ssl=openssl \
+          CC="${CROSS_COMPILE}gcc" \
+          CXX="${CROSS_COMPILE}g++" \
+          LD="${CROSS_COMPILE}ld" \
+          STRIP="${CROSS_COMPILE}strip" \
+          AR="${CROSS_COMPILE}ar" \
+          RANLIB="${CROSS_COMPILE}ranlib"
+        
+        make -j$(nproc)
+        mkdir -p ../output/usr/bin
+        make install DESTDIR=../output
+
+    - name: Validate static linking
+      run: |
+        output_path=$(find ./output -name "wget")
+        if ldd "$output_path" 2>&1 | grep -q "not a dynamic executable"; then
+          echo "静态链接验证通过 ✔️"
+        else
+          echo "❌ 错误：wget 不是静态链接"
+          exit 1
+        fi
+
+    - name: Create OpenWrt-compatible IPK
+      id: create_ipk
+      run: |
+        PKG_NAME="wget-static"
+        PKG_VERSION="1.21-1"
+        PKG_ARCH="${{ matrix.arch }}"
+        OUTPUT_IPK="${PKG_NAME}_${PKG_VERSION}_${PKG_ARCH}.ipk"
+
+        mkdir -p output/CONTROL
+        mkdir -p output/usr/bin
+        cp output/usr/bin/wget output/usr/bin/
+
+        cat > output/CONTROL/control << EOF
+Package: $PKG_NAME
+Version: $PKG_VERSION
+Section: net
+Priority: optional
+Architecture: $PKG_ARCH
+Maintainer: GitHub Actions <actions@github.com>
+Description: Static compiled wget for OpenWrt 18.06-SNAPSHOT (MT7622)
+Depends: libc, libssl
+EOF
+
+        cd output
+        echo "2.0" > debian-binary
+        tar -czf control.tar.gz -C CONTROL .
+        tar -czf data.tar.gz ./usr
+        ar rcs "../$OUTPUT_IPK" control.tar.gz data.tar.gz debian-binary
+        echo "ipk_path=${OUTPUT_IPK}" >> $GITHUB_OUTPUT
+        cd ..
+
+    - name: Upload IPK artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: wget-static-ipk-${{ matrix.arch }}
+        path: ${{ steps.create_ipk.outputs.ipk_path }}
+
+    - name: Verify IPK on router (手动执行步骤提示)
+      run: |
+        echo "✅ IPK 文件已生成，请手动上传至路由器并安装："
+        echo "scp ${{ steps.create_ipk.outputs.ipk_path }} root@192.168.1.1:/tmp/"
+        echo "ssh root@192.168.1.1 'opkg install /tmp/${{ steps.create_ipk.outputs.ipk_path }}'"
+        echo "测试命令：wget-static http://example.com -O /tmp/test.txt"
